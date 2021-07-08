@@ -1,5 +1,4 @@
 import torch
-device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 def train_epoch(model, optimizer, data_loader, loss_fn):
     model.train()
@@ -7,10 +6,9 @@ def train_epoch(model, optimizer, data_loader, loss_fn):
         inputs, labels = data
         optimizer.zero_grad()
         logits = model(inputs)
-        loss = loss_fn(logits, labels.squeeze().to(device))
+        loss = loss_fn(logits, labels.squeeze())
         loss.backward()
         optimizer.step()
-
 
 def predict_epoch(model, data_loader, return_logits=False):
 # If return_logits==True, returns logits and labels in two Tensors (for ECE)
@@ -23,12 +21,13 @@ def predict_epoch(model, data_loader, return_logits=False):
     with torch.no_grad():
         for data in data_loader:
             inputs, labels = data
+            labels = labels.squeeze()
             logits = model(inputs)
             if return_logits:
                 logit_lst.append(logits)
-                label_lst.append(labels.to(device))
+                label_lst.append(labels)
             predicted = torch.argmax(logits.data, dim=1)
-            correct_preds += (predicted == labels.to(device)).sum().item()
+            correct_preds += (predicted == labels).sum().item()
     print("Accuracy: ", correct_preds / epoch_size)
     if return_logits: return torch.cat(logit_lst,dim=0), torch.cat(label_lst,dim=0)
 

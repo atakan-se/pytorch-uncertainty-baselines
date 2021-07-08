@@ -1,16 +1,27 @@
 import torch
 import torchvision.datasets
 
-class MNIST():
-    def __init__(self, train=True, transform=None):
-        self.dataset = torchvision.datasets.MNIST(root='./datasets', train=train, transform=transform, download=True)
+DATASET_PATH = './data'
+
+class Dataset():
+    def __init__(self, dataset, train=True, transform=None, target_transform=None):
+        self.dataset = dataset(root=DATASET_PATH, train=train, transform=transform, target_transform=target_transform, download=True)
 
     def get_loader(self, batch_size, shuffle=False):
-        return torch.utils.data.DataLoader(self.dataset, batch_size=batch_size, shuffle=shuffle, num_workers=0)
+        return torch.utils.data.DataLoader(self.dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4)
 
-class FashionMNIST():
-    def __init__(self, train=True, transform=None):
-        self.dataset = torchvision.datasets.FashionMNIST(root='./datasets', train=train, transform=transform, download=True)
+class MNIST(Dataset):
+    def __init__(self, train=True, transform=None, target_transform=None):
+        super().__init__(torchvision.datasets.MNIST, train, transform, target_transform)
 
-    def get_loader(self, batch_size, shuffle=False):
-        return torch.utils.data.DataLoader(self.dataset, batch_size=batch_size, shuffle=shuffle, num_workers=0)
+class FashionMNIST(Dataset):
+    def __init__(self, train=True, transform=None, target_transform=None):
+        super().__init__(torchvision.datasets.FashionMNIST, train, transform, target_transform)
+
+class CIFAR10(Dataset):
+    def __init__(self, train=True, transform=None, target_transform=None):
+        super().__init__(torchvision.datasets.CIFAR10, train, transform, target_transform)
+
+class CIFAR100(Dataset):
+    def __init__(self, train=True, transform=None, target_transform=None):
+        super().__init__(torchvision.datasets.CIFAR100, train, transform, target_transform)
