@@ -5,9 +5,9 @@ import copy
 from utils import train_epoch, predict_epoch
 
 def init_weights(m):
-    if type(m) == nn.Linear:
+    if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
         #nn.init.xavier_uniform_(m.weight)
-        nn.init.kaiming_uniform_(m.weight, nonlinearity='relu')
+        nn.init.kaiming_uniform_(m.weight.data , nonlinearity='relu')
 
 class LeNet5(torch.nn.Module):
     def __init__(self):
@@ -57,22 +57,23 @@ class DeterministicWrapper(torch.nn.Module):
         self.model = copy.deepcopy(model)
         self.model.apply(init_weights)
         self.optimizer = hyperparams['optimizer'](self.model.parameters(), **hyperparams['optimizer_params'])
-    
+        self.device = hyperparams['device']
+
     def forward(self, x):
         return self.model(x)
 
     def train_epoch(self, data_loader, loss_fn):
-        train_epoch(self.model, self.optimizer, data_loader, loss_fn)
+        train_epoch(self.model, self.optimizer, data_loader, loss_fn, self.device)
 
     def predict_epoch(self, data_loader, return_logits=False):
-        return predict_epoch(self, data_loader, return_logits )
+        return predict_epoch(self, data_loader, self.device, return_logits )
 
     def multiply_lr(self, factor):
         for group in self.optimizer.param_groups:
             group['lr'] *= factor
 
     def save_weights(self):
-        torch.save(self.model.state_dict(), './saved_models/model_weights.pt')
+        torch.save(self.model.state_dict(), './saved_models/deterministic.pt')
 
 class EnsembleWrapper(torch.nn.Module):
     def __init__(self, model, hyperparams):
@@ -85,8 +86,10 @@ class EnsembleWrapper(torch.nn.Module):
             self.models[i].apply(init_weights)
         for i in range(self.ensemble_size):
             self.optimizers.append(hyperparams['optimizer'](self.models[i].parameters(), **hyperparams['optimizer_params']))
+        self.device = hyperparams['device']
 
     def forward(self, x): # DO NOT USE FOR TRAINING. ONLY FOR PREDICTING
+        assert self.training, "Do not use 'forward' for training directly."
         preds = []
         for model in self.models:
             preds.append( model(x.clone()) )
@@ -94,10 +97,10 @@ class EnsembleWrapper(torch.nn.Module):
 
     def train_epoch(self, data_loader, loss_fn):
         for i in range(self.ensemble_size):
-            train_epoch(self.models[i], self.optimizers[i], data_loader, loss_fn)
+            train_epoch(self.models[i], self.optimizers[i], data_loader, loss_fn, self.device)
 
     def predict_epoch(self, data_loader, return_logits=False):
-        return predict_epoch(self, data_loader, return_logits )
+        return predict_epoch(self, data_loader, self.device, return_logits )
 
     def multiply_lr(self, factor):
         for optim in self.optimizers:
@@ -106,4 +109,111 @@ class EnsembleWrapper(torch.nn.Module):
 
     def save_weights(self):
         for i, model in enumerate(self.models):
-                torch.save(model.state_dict(), './saved_models/model_weights' + str(i) + '.pt')
+                torch.save(model.state_dict(), './saved_models/ensemble' + str(i) + '.pt')
+
+class DropoutWrapper(torch.nn.Module):
+    def __init__(self, model, hyperparams):
+        super().__init__()
+        self.model = copy.deepcopy(model)
+        self.model.apply(init_weights)
+        self.optimizer = hyperparams['optimizer'](self.model.parameters(), **hyperparams['optimizer_params'])
+        # Adding Dropout after every feature layer:
+        total_blocks = len(self.model.features[0])
+        self.dropouts = nn.ModuleList([ nn.Dropout(hyperparams['dropout_rate']) for _ in range(total_blocks)] )
+        self.device = hyperparams['device']
+
+    def forward(self, x):
+        y = self.model.features[0][0](x)
+        y = self.dropouts[0](y)
+        for i in range(1, len(self.model.features[0]) ):
+            y = self.model.features[0][i](y)
+            y = self.dropouts[i](y)
+        y = self.model.global_avg(y)
+        y = torch.squeeze(y)
+        y = self.model.classifier(y)
+        return y
+        
+    def train_epoch(self, data_loader, loss_fn):
+        train_epoch(self.model, self.optimizer, data_loader, loss_fn, self.device)
+
+    def predict_epoch(self, data_loader, return_logits=False):
+        return predict_epoch(self, data_loader, self.device, return_logits )
+
+    def multiply_lr(self, factor):
+        for group in self.optimizer.param_groups:
+            group['lr'] *= factor
+
+    def save_weights(self):
+        torch.save(self.model.state_dict(), './saved_models/dropout.pt')
+
+
+class Conv2d_BatchEnsemble_Wrapper(torch.nn.Module): # Wrapper for a single Conv2d layer
+    def __init__(self, conv_layer, ensemble_size=4):
+        super().__init__()
+        self.conv =  copy.deepcopy(conv_layer)
+        self.ensemble_size = ensemble_size
+        self.alpha = nn.Parameter( torch.ones((ensemble_size, self.conv.in_channels)) )
+        self.gamma = nn.Parameter( torch.ones((ensemble_size, self.conv.out_channels)) )
+
+    def forward(self, x):
+        sample_per_model = x.shape[0] / self.ensemble_size # Batch size / model count
+        alpha = torch.repeat_interleave(self.alpha, sample_per_model, dim=0).unsqueeze(-1).unsqueeze(-1)
+        gamma = torch.repeat_interleave(self.gamma, sample_per_model, dim=0).unsqueeze(-1).unsqueeze(-1)
+        y = self.conv(x*alpha)*gamma
+        return y            
+
+class BatchEnsembleWrapper(torch.nn.Module): # wrapper for entire module
+    def __init__(self, model, hyperparams):
+        super().__init__()
+        self.model = copy.deepcopy(model)
+        self.model.apply(init_weights)
+
+        def conv_to_batchconv(feature):
+        # Replaces Conv2d layers with BatchEnsemble Conv2d
+            for n, module in feature.named_children():
+                if len(list(module.children())) > 0:
+                    conv_to_batchconv(module)
+            if isinstance(module, nn.Conv2d):
+                setattr(feature, n, Conv2d_BatchEnsemble_Wrapper(module))
+
+        conv_to_batchconv(self.model.features)
+        self.ensemble_size = hyperparams['ensemble_size']
+        self.optimizer = hyperparams['optimizer'](self.model.parameters(), **hyperparams['optimizer_params'])
+        self.device = hyperparams['device']
+
+    def forward(self, x):
+        return self.model(x)
+
+    def train_epoch(self, data_loader, loss_fn):
+        train_epoch(self.model, self.optimizer, data_loader, loss_fn, self.device)
+
+    def predict_epoch(self, data_loader, return_logits=False):
+        # TO DO: Change to predict function like the rest of the wrappers
+        epoch_size = len(data_loader.dataset)
+        self.model.eval()
+        if return_logits:
+            logit_lst = []
+            label_lst = []
+        correct_preds = 0
+        with torch.no_grad():
+            for data in data_loader:
+                inputs, labels = data
+                inputs = inputs.repeat(self.ensemble_size, 1, 1, 1).to(self.device) 
+                labels = labels.squeeze().to(self.device) 
+                logits = self.model(inputs)
+                logits = torch.chunk(logits, self.ensemble_size)
+                logits = torch.mean(torch.stack(logits), dim=0)
+                if return_logits:
+                    logit_lst.append(logits)
+                    label_lst.append(labels)
+                predicted = torch.argmax(logits.data, dim=1)
+                correct_preds += (predicted == labels).sum().item()
+        print("Accuracy: ", correct_preds / epoch_size)
+        if return_logits: return torch.cat(logit_lst,dim=0), torch.cat(label_lst,dim=0)
+
+    def multiply_lr(self, factor):
+        for group in self.optimizer.param_groups:
+            group['lr'] *= factor
+
+    def save_weights(self):
+        torch.save(self.model.state_dict(), './saved_models/batchensemble.pt')

@@ -16,9 +16,10 @@ parser.add_argument("-epoch", type=int, default=350)
 parser.add_argument("-ensemble_size", type=int, default=None)
 parser.add_argument("-cifar100", action='store_true')
 parser.add_argument("-cores", type=int, default=1) # NUM WORKERS FOR DATA LOADER
+parser.add_argument("-dropout_rate", type=float, default=0.1)
 args = parser.parse_args()
 
-from models import MobilenetV2_CIFAR, DeterministicWrapper, EnsembleWrapper
+from models import MobilenetV2_CIFAR, DeterministicWrapper, EnsembleWrapper, DropoutWrapper
 from datasets import CIFAR10, CIFAR100
 from utils import ECELoss
 
@@ -34,10 +35,9 @@ hyperparams={'optimizer':torch.optim.SGD,
             'batch_size':args.batch_size,
             'epoch':args.epoch,
             'ensemble_size':args.ensemble_size,
+            "-dropout_rate":args.dropout_rate,
             "device":device,
             "cores":args.cores}
-
-
 
 if args.cifar100:
     dataset = CIFAR100
@@ -67,7 +67,7 @@ test_transform = torchvision.transforms.Compose([
         torchvision.transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
         ])
 
-target_transform = torchvision.transforms.Compose([
+target_transform = torchvision.transforms.Compose([       
         ])
 
 train_data = dataset(transform=train_transform, target_transform=target_transform)

@@ -1,16 +1,18 @@
 import torch
 
-def train_epoch(model, optimizer, data_loader, loss_fn):
+def train_epoch(model, optimizer, data_loader, loss_fn, device):
     model.train()
     for data in data_loader:
         inputs, labels = data
+        inputs = inputs.to(device)
+        labels = labels.squeeze().to(device)
         optimizer.zero_grad()
         logits = model(inputs)
-        loss = loss_fn(logits, labels.squeeze())
+        loss = loss_fn(logits, labels)
         loss.backward()
         optimizer.step()
 
-def predict_epoch(model, data_loader, return_logits=False):
+def predict_epoch(model, data_loader, device, return_logits=False):
 # If return_logits==True, returns logits and labels in two Tensors (for ECE)
     epoch_size = len(data_loader.dataset)
     model.eval()
@@ -21,7 +23,8 @@ def predict_epoch(model, data_loader, return_logits=False):
     with torch.no_grad():
         for data in data_loader:
             inputs, labels = data
-            labels = labels.squeeze()
+            inputs = inputs.to(device)
+            labels = labels.squeeze().to(device)
             logits = model(inputs)
             if return_logits:
                 logit_lst.append(logits)

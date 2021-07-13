@@ -13,12 +13,12 @@ parser.add_argument("-lr", type=float, default=0.1)
 parser.add_argument("-weight_decay", type=float, default=4e-5)
 parser.add_argument("-batch_size", type=int, default=128)
 parser.add_argument("-epoch", type=int, default=350)
-parser.add_argument("-ensemble_size", type=int, default=None)
+parser.add_argument("-ensemble_size", type=int, default=4)
 parser.add_argument("-cifar100", action='store_true')
 parser.add_argument("-cores", type=int, default=1) # NUM WORKERS FOR DATA LOADER
 args = parser.parse_args()
 
-from models import MobilenetV2_CIFAR, DeterministicWrapper, EnsembleWrapper
+from models import MobilenetV2_CIFAR, BatchEnsembleWrapper
 from datasets import CIFAR10, CIFAR100
 from utils import ECELoss
 
@@ -47,11 +47,7 @@ else:
     model = MobilenetV2_CIFAR(classes=10).to(device)
     print("Training with CIFAR10")
 
-if hyperparams['ensemble_size']:
-    model = EnsembleWrapper(model, hyperparams)
-else:
-    model = DeterministicWrapper(model, hyperparams)
-
+model = BatchEnsembleWrapper(model, hyperparams)
 
 loss_func = torch.nn.CrossEntropyLoss().to(device)
 

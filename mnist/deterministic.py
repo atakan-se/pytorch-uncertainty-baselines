@@ -15,6 +15,7 @@ parser.add_argument("-batch_size", type=int, default=256)
 parser.add_argument("-epoch", type=int, default=25)
 parser.add_argument("-ensemble_size", type=int, default=None)
 parser.add_argument("-fashion", action='store_true')
+parser.add_argument("-cores", type=int, default=1) # NUM WORKERS FOR DATA LOADER
 args = parser.parse_args()
 
 from models import LeNet5, DeterministicWrapper, EnsembleWrapper
@@ -32,7 +33,9 @@ hyperparams={'optimizer':torch.optim.Adam,
                 'optimizer_params':{'lr':args.lr, 'weight_decay':args.weight_decay}, 
             'batch_size':args.batch_size,
             'epoch':args.epoch,
-            'ensemble_size':args.ensemble_size}
+            'ensemble_size':args.ensemble_size,
+            "device":device,
+            "cores":args.cores}
 
 model = LeNet5().to(device)
 
@@ -51,23 +54,21 @@ loss_func = torch.nn.CrossEntropyLoss().to(device)
 
 transform = torchvision.transforms.Compose([       
         torchvision.transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,)),
-        torchvision.transforms.Lambda(lambda x: x.to(device))
+        torchvision.transforms.Normalize((0.5,), (0.5,))
         ])
 
 target_transform = torchvision.transforms.Compose([       
-        torchvision.transforms.Lambda(lambda x: torch.tensor([x]).to(device))
         ])
 
 train_data = dataset(transform=transform, target_transform=target_transform)
 test_data =  dataset(train=False, transform=transform, target_transform=target_transform)
-train_loader = train_data.get_loader(batch_size=hyperparams['batch_size'])
-test_loader = test_data.get_loader(batch_size=hyperparams['batch_size'])
+train_loader = train_data.get_loader(batch_size=hyperparams['batch_size'], num_workers=hyperparams['cores'])
+test_loader = test_data.get_loader(batch_size=hyperparams['batch_size'], num_workers=hyperparams['cores'])
 
 for epoch in range(hyperparams['epoch']):
   model.train_epoch(train_loader, loss_func)
   print("Epoch", epoch, "done.")
-  if epoch and not epoch%5:
+  if not epoch%5:
         print("--Validation--")
         model.predict_epoch(test_loader)
 
