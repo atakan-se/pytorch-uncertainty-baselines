@@ -13,13 +13,14 @@ parser.add_argument("-lr", type=float, default=0.1)
 parser.add_argument("-weight_decay", type=float, default=4e-5)
 parser.add_argument("-batch_size", type=int, default=128)
 parser.add_argument("-epoch", type=int, default=350)
+parser.add_argument("-validation_frequency", type=int, default=5)
 parser.add_argument("-ensemble_size", type=int, default=None)
 parser.add_argument("-cifar100", action='store_true')
 parser.add_argument("-cores", type=int, default=1) # NUM WORKERS FOR DATA LOADER
 parser.add_argument("-dropout_rate", type=float, default=0.1)
 args = parser.parse_args()
 
-from models import MobilenetV2_CIFAR, DeterministicWrapper, EnsembleWrapper, DropoutWrapper
+from models import MobilenetV2_CIFAR, DropoutWrapper
 from datasets import CIFAR10, CIFAR100
 from utils import ECELoss
 
@@ -35,9 +36,10 @@ hyperparams={'optimizer':torch.optim.SGD,
             'batch_size':args.batch_size,
             'epoch':args.epoch,
             'ensemble_size':args.ensemble_size,
-            "-dropout_rate":args.dropout_rate,
+            "dropout_rate":args.dropout_rate,
             "device":device,
-            "cores":args.cores}
+            "cores":args.cores,
+            "val_freq": args.validation_frequency}
 
 if args.cifar100:
     dataset = CIFAR100
@@ -47,11 +49,7 @@ else:
     model = MobilenetV2_CIFAR(classes=10).to(device)
     print("Training with CIFAR10")
 
-if hyperparams['ensemble_size']:
-    model = EnsembleWrapper(model, hyperparams)
-else:
-    model = DeterministicWrapper(model, hyperparams)
-
+model = DropoutWrapper(model, hyperparams)
 
 loss_func = torch.nn.CrossEntropyLoss().to(device)
 
@@ -75,21 +73,31 @@ test_data =  dataset(train=False, transform=test_transform, target_transform=tar
 train_loader = train_data.get_loader(batch_size=hyperparams['batch_size'], num_workers=hyperparams['cores'])
 test_loader = test_data.get_loader(batch_size=hyperparams['batch_size'], num_workers=hyperparams['cores'])
 
+best_accuracy = 0
 schedules = [150,250]
 for epoch in range(hyperparams['epoch']):
     model.train_epoch(train_loader, loss_func)
     print("Epoch", epoch, "done.")
-    model.save_weights()
-    if not epoch%5:
+    if not epoch % hyperparams['val_freq']:
         print("--Validation--")
-        model.predict_epoch(test_loader)
+        accuracy = model.predict_epoch(test_loader)
+        print("Accuracy: ", accuracy)
+        if accuracy > best_accuracy:
+            model.save_weights()
+            best_accuracy = accuracy
     if epoch in schedules:
         model.multiply_lr(0.1)
         
+model.load_weights() # load best weights
+
 print("-Training Accuracy-")
-model.predict_epoch(train_loader)
+accuracy = model.predict_epoch(train_loader)
+print("Accuracy: ", accuracy)
+
 print("-Validation Accuracy-")
 logits, labels = model.predict_epoch(test_loader, return_logits=True)
+accuracy = (torch.argmax(logits.data, dim=1) == labels).sum().item() / logits.shape[0]
+print("Accuracy: ", accuracy)
 
 ECE_loss_func = ECELoss()
 ECE_loss = ECE_loss_func(logits, labels).item()

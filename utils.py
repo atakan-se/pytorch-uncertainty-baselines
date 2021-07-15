@@ -31,8 +31,9 @@ def predict_epoch(model, data_loader, device, return_logits=False):
                 label_lst.append(labels)
             predicted = torch.argmax(logits.data, dim=1)
             correct_preds += (predicted == labels).sum().item()
-    print("Accuracy: ", correct_preds / epoch_size)
+    
     if return_logits: return torch.cat(logit_lst,dim=0), torch.cat(label_lst,dim=0)
+    else: return correct_preds / epoch_size
 
 
 # Taken from: https://github.com/gpleiss/temperature_scaling/

@@ -75,6 +75,11 @@ class DeterministicWrapper(torch.nn.Module):
     def save_weights(self):
         torch.save(self.model.state_dict(), './saved_models/deterministic.pt')
 
+    def load_weights(self, path=None):
+        if path==None:
+            path = './saved_models/deterministic.pt'
+        self.model.load_state_dict(torch.load(path))
+
 class EnsembleWrapper(torch.nn.Module):
     def __init__(self, model, hyperparams):
         super().__init__()
@@ -111,6 +116,12 @@ class EnsembleWrapper(torch.nn.Module):
         for i, model in enumerate(self.models):
                 torch.save(model.state_dict(), './saved_models/ensemble' + str(i) + '.pt')
 
+    def load_weights(self, path=None):
+        if path==None:
+            path = './saved_models/ensemble'
+        for i in range(len(self.models)):
+            self.models[i].load_state_dict(torch.load(path + str(i) + '.pt'))
+
 class DropoutWrapper(torch.nn.Module):
     def __init__(self, model, hyperparams):
         super().__init__()
@@ -146,12 +157,18 @@ class DropoutWrapper(torch.nn.Module):
     def save_weights(self):
         torch.save(self.model.state_dict(), './saved_models/dropout.pt')
 
+    def load_weights(self, path=None):
+        if path==None:
+            path = './saved_models/dropout.pt'
+        self.model.load_state_dict(torch.load(path))
+
 
 class Conv2d_BatchEnsemble_Wrapper(torch.nn.Module): # Wrapper for a single Conv2d layer
     def __init__(self, conv_layer, ensemble_size=4):
         super().__init__()
         self.conv =  copy.deepcopy(conv_layer)
         self.ensemble_size = ensemble_size
+        # TO DO: Change initialization from ones vvvv
         self.alpha = nn.Parameter( torch.ones((ensemble_size, self.conv.in_channels)) )
         self.gamma = nn.Parameter( torch.ones((ensemble_size, self.conv.out_channels)) )
 
@@ -208,8 +225,9 @@ class BatchEnsembleWrapper(torch.nn.Module): # wrapper for entire module
                     label_lst.append(labels)
                 predicted = torch.argmax(logits.data, dim=1)
                 correct_preds += (predicted == labels).sum().item()
-        print("Accuracy: ", correct_preds / epoch_size)
+
         if return_logits: return torch.cat(logit_lst,dim=0), torch.cat(label_lst,dim=0)
+        else: return correct_preds / epoch_size
 
     def multiply_lr(self, factor):
         for group in self.optimizer.param_groups:
@@ -217,3 +235,8 @@ class BatchEnsembleWrapper(torch.nn.Module): # wrapper for entire module
 
     def save_weights(self):
         torch.save(self.model.state_dict(), './saved_models/batchensemble.pt')
+
+    def load_weights(self, path=None):
+        if path==None:
+            path = './saved_models/batchensemble.pt'
+        self.model.load_state_dict(torch.load(path))
