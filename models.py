@@ -139,7 +139,7 @@ class BatchEnsembleWrapper(torch.nn.Module, SingleWrapper): # wrapper for entire
 
     def forward(self, x):
         return self.model(x)
-        
+
     def predict_epoch(self, data_loader, return_logits=False):
         # TO DO: Change to predict function like the rest of the wrappers
         epoch_size = len(data_loader.dataset)
@@ -165,6 +165,26 @@ class BatchEnsembleWrapper(torch.nn.Module, SingleWrapper): # wrapper for entire
         if return_logits: return torch.cat(logit_lst,dim=0), torch.cat(label_lst,dim=0)
         else: return correct_preds / epoch_size
 
+class MIMOWrapper(torch.nn.Module, SingleWrapper):
+    def __init__(self, model, hyperparams):
+        torch.nn.Module.__init__(self)
+        SingleWrapper.__init__(self, model, hyperparams, name='mimo')
+        self.ensemble_size = hyperparams['ensemble_size']
+        self.batch_repetitions = hyperparams['batch_repetitions']
+        
+        self.model.classifier = nn.Linear(in_features=self.model.classifier.in_features,
+                            out_features= self.model.classifier.out_features * self.ensemble_size, 
+                            bias=True).to(self.device)
+        self.model.classifier.apply(init_weights)
+
+    def forward(self, x):
+        y = x.repeat(self.batch_repetitions, 1, 1, 1)
+        y = self.model(x)
+        y = torch.chunk(y, self.batch_repetitions, dim=0)
+        y = torch.mean(torch.stack(y), dim=0)
+        y = torch.chunk(y, self.ensemble_size, dim=1)
+        y = torch.mean(torch.stack(y), dim=0)
+        return y
 
 class EnsembleWrapper(torch.nn.Module):
     def __init__(self, model, hyperparams):
