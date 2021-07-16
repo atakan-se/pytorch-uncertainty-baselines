@@ -19,3 +19,4 @@ Model  | Train Acc. | Test Acc. |  ECE
 Deterministic | 0.99974 | 0.9344 | 0.04796
 Dropout (0.1) | 0.9998 | 0.9355 | 0.046998
 BatchEnsemble (size=4) | 0.99982 | 0.9366 | 0.045764
+MIMO(in=1,out=4) | 0.99998 | 0.9422 | 0.205784
