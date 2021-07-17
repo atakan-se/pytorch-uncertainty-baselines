@@ -46,6 +46,7 @@ hyperparams={'optimizer':torch.optim.SGD,
 if args.cifar100:
     dataset = CIFAR100
     model = MobilenetV2_CIFAR(classes=100).to(device)
+    print("Training with CIFAR100")
 else:
     dataset = CIFAR10
     model = MobilenetV2_CIFAR(classes=10).to(device)
@@ -104,3 +105,6 @@ print("Accuracy: ", accuracy)
 ECE_loss_func = ECELoss()
 ECE_loss = ECE_loss_func(logits, labels).item()
 print("Expected Calibration Error: ", ECE_loss)
+
+nll_loss = loss_func(logits, labels).item()
+print("NLL Loss", nll_loss)

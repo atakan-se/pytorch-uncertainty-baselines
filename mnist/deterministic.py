@@ -93,3 +93,6 @@ print("Accuracy: ", accuracy)
 ECE_loss_func = ECELoss()
 ECE_loss = ECE_loss_func(logits, labels).item()
 print("Expected Calibration Error: ", ECE_loss)
+
+nll_loss = loss_func(logits, labels).item()
+print("NLL Loss", nll_loss)
