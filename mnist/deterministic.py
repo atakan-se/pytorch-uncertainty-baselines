@@ -64,7 +64,7 @@ target_transform = torchvision.transforms.Compose([
 
 train_data = dataset(transform=transform, target_transform=target_transform)
 test_data =  dataset(train=False, transform=transform, target_transform=target_transform)
-train_loader = train_data.get_loader(batch_size=hyperparams['batch_size'], num_workers=hyperparams['cores'])
+train_loader = train_data.get_loader(batch_size=hyperparams['batch_size'], num_workers=hyperparams['cores'], shuffle=True)
 test_loader = test_data.get_loader(batch_size=hyperparams['batch_size'], num_workers=hyperparams['cores'])
 
 best_accuracy = 0
