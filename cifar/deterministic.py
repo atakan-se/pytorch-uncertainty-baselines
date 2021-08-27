@@ -17,11 +17,17 @@ parser.add_argument("-validation_frequency", type=int, default=5)
 parser.add_argument("-ensemble_size", type=int, default=None)
 parser.add_argument("-cifar100", action='store_true')
 parser.add_argument("-cores", type=int, default=1) # NUM WORKERS FOR DATA LOADER
+parser.add_argument("-augmix", action='store_true')
+parser.add_argument("-mixture_width", type=int, default=3)
+parser.add_argument("-mixture_depth", type=int, default=1)
+parser.add_argument("-aug_severity", type=int, default=3)
+
 args = parser.parse_args()
 
 from models import MobilenetV2_CIFAR, DeterministicWrapper, EnsembleWrapper
 from datasets import CIFAR10, CIFAR100
 from utils import ECELoss
+from augmix import AugMixDataset
 
 random.seed(0)
 np.random.seed(0)
@@ -58,11 +64,17 @@ else:
 
 loss_func = torch.nn.CrossEntropyLoss().to(device)
 
-train_transform = torchvision.transforms.Compose([       
+if not args.augmix:
+    train_transform = torchvision.transforms.Compose([       
+            torchvision.transforms.RandomCrop(32, padding=4),
+            torchvision.transforms.RandomHorizontalFlip(),
+            torchvision.transforms.ToTensor(),
+            torchvision.transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
+            ])
+else:
+    train_transform = torchvision.transforms.Compose([       
         torchvision.transforms.RandomCrop(32, padding=4),
-        torchvision.transforms.RandomHorizontalFlip(),
-        torchvision.transforms.ToTensor(),
-        torchvision.transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010))
+        torchvision.transforms.RandomHorizontalFlip()
         ])
 
 test_transform = torchvision.transforms.Compose([       
@@ -73,9 +85,15 @@ test_transform = torchvision.transforms.Compose([
 target_transform = torchvision.transforms.Compose([
         ])
 
-train_data = dataset(transform=train_transform, target_transform=target_transform)
-test_data =  dataset(train=False, transform=test_transform, target_transform=target_transform)
+if not args.augmix:
+    train_data = dataset(transform=train_transform, target_transform=target_transform)
+else:
+    train_data = AugMixDataset(dataset, transform=train_transform, target_transform=target_transform, 
+                                preprocess=test_transform, mixture_width=args.mixture_width, 
+                                mixture_depth=args.mixture_depth, aug_severity = args.aug_severity)
+
 train_loader = train_data.get_loader(batch_size=hyperparams['batch_size'], num_workers=hyperparams['cores'], shuffle=True)
+test_data =  dataset(train=False, transform=test_transform, target_transform=target_transform)
 test_loader = test_data.get_loader(batch_size=hyperparams['batch_size'], num_workers=hyperparams['cores'])
 
 best_accuracy = 0
